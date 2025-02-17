@@ -1,0 +1,1364 @@
+********************************************************************************
+**# Start CALCULATE INTER-LABS COEFFICIENT OF VARIATION
+********************************************************************************
+
+cd "C:\Documenti\Rombola\GDL AIBT PR"
+
+use merged_immucor_onelambda_class_I_and_II_s_appended, clear
+
+// gen HLA antigen indicator
+gen A = regexm(Allele, "^A")
+gen B = regexm(Allele, "^B")
+gen C = regexm(Allele, "^C")
+gen DQ = regexm(Allele, "^DQ")
+gen DR = regexm(Allele, "^DR")
+gen DP = regexm(Allele, "^DP")
+
+gen HLA_Allele = .
+local i = 0
+foreach varname in A B C DQ DR DP  {
+	local ++i
+	replace  HLA_Allele = `i' if `varname' == 1
+	 }
+label define HLA_Allele 1 "A" 2 "B" 3 "C" 4 "DQ" 5 "DR" 6 "DP"
+label values  HLA_Allele HLA_Allele
+
+
+*-------------------------------------------------------------------------------
+**# boxplot trimmed 1.5*IQR beyond quartiles CVs
+*-------------------------------------------------------------------------------
+preserve
+drop if serum == 9 & hlaclass == 2
+* immucor =>  BO FI NA PD PR PG PI RC
+* onelambda => AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N
+
+
+egen _p75_1 = rowpctile(BO FI NA PD PR PG PI RC), p(75)
+egen _p25_1 = rowpctile(BO FI NA PD PR PG PI RC), p(25)
+egen _p50_1 = rowpctile(BO FI NA PD PR PG PI RC), p(50)
+gen _iqr_1 = _p75_1 - _p25_1
+gen _lb_1 = _p25_1 - 1.5 * _iqr_1
+gen _ub_1 = _p75_1 + 1.5 * _iqr_1
+foreach var of varlist BO FI NA PD PR PG PI RC  {
+	replace `var' = . if `var' < _lb_1
+	replace `var' = . if `var' > _ub_1
+	 }
+	 
+egen _p75_2 = rowpctile(AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N), p(75)
+egen _p25_2 = rowpctile(AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N), p(25)
+egen _p50_2 = rowpctile(AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N), p(50)
+gen _iqr_2 = _p75_2 - _p25_2
+gen _lb_2 = _p25_2 - 1.5 * _iqr_2
+gen _ub_2 = _p75_2 + 1.5 * _iqr_2
+foreach var of varlist AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N  {
+	replace `var' = . if `var' < _lb_2
+	replace `var' = . if `var' > _ub_2
+	 }
+
+egen _mean1= rowmean(BO FI NA PD PR PG PI RC)
+egen _sd1 = rowsd(BO FI NA PD PR PG PI RC)
+gen _cv1 =_sd1 / _mean1 * 100
+label var _cv1 "Vendor 1"
+
+egen _mean2= rowmean(AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N)
+egen _sd2 = rowsd(AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N)
+gen _cv2 =_sd2 / _mean2 * 100
+label var _cv2 "Vendor 2"
+
+qui centile _cv1 if hlaclass == 1
+local p50_1_1 = r(c_1)
+local sp50_1_1 = string(`p50_1_1', "%3.1f")
+
+
+qui centile _cv1 if hlaclass == 2
+local p50_1_2 = r(c_1)
+local sp50_1_2 = string(`p50_1_2', "%3.1f")
+
+qui centile _cv2 if hlaclass == 1
+local p50_2_1 = r(c_1)
+local sp50_2_1 = string(`p50_2_1', "%3.1f")
+
+qui centile _cv2 if hlaclass == 2
+local p50_2_2 = r(c_1)
+local sp50_2_2 = string(`p50_2_2', "%3.1f")
+
+table (hlaclass), stat(median _cv1 _cv2) nototal
+
+graph box _cv1 _cv2,  over(hlaclass)  nooutsides note("") ///
+ boxgap(45) /// 
+ title ("Trimmed Inter-Labs Coefficient of Variation (CV)") /// 
+ subtitle("Excluding MFI values that are more than 1.5 IQR beyond the quartiles")  ///
+ ylabe(0(25)100, grid) ymtick(12.5(12.5)87.5, grid) ytitle("(%)") ///
+ text(`p50_1_1' 23 "`sp50_1_1'", size(*0.9) color(stc1)) ///
+ text(`p50_2_1' 46 "`sp50_2_1'", size(*0.9) color(stc2)) ///
+ text(`p50_1_2' 77.5 "`sp50_1_2'", size(*0.9) color(stc1)) ///
+ text(`p50_2_2' 101 "`sp50_2_2'", size(*0.9) color(stc2))
+graph export cv_trimmed_iqr.tif, replace
+graph export cv_trimmed_iqr.pdf, replace
+graph export cv_trimmed_iqr.png, replace
+restore
+
+*-------------------------------------------------------------------------------
+**# boxplot trimmed 90% central range CVs
+*-------------------------------------------------------------------------------
+preserve
+drop if serum == 9 & hlaclass == 2
+* immucor =  rowmedian(BO FI NA PD PR PG PI RC)
+* onelambda = rowmedian(AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N)
+
+egen _p95_1 = rowpctile(BO FI NA PD PR PG PI RC), p(95)
+egen _p5_1  = rowpctile(BO FI NA PD PR PG PI RC), p(5)
+
+foreach var of varlist BO FI NA PD PR PG PI RC  {
+	replace `var' = . if `var' < _p5_1
+	replace `var' = . if `var' > _p95_1
+	 }
+	 
+egen _p95_2 = rowpctile(AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N), p(95)
+egen _p5_2  = rowpctile(AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N), p(5)
+
+foreach var of varlist AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N  {
+	replace `var' = . if `var' < _p5_2
+	replace `var' = . if `var' > _p95_2
+	 }
+
+egen _mean1= rowmean(BO FI NA PD PR PG PI RC)
+egen _sd1 = rowsd(BO FI NA PD PR PG PI RC)
+gen _cv1 =_sd1 / _mean1 * 100
+label var _cv1 "Vendor 1"
+
+egen _mean2= rowmean(AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N)
+egen _sd2 = rowsd(AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N)
+gen _cv2 =_sd2 / _mean2 * 100
+label var _cv2 "Vendor 2"
+
+qui centile _cv1 if hlaclass == 1
+local p50_1_1 = r(c_1)
+local sp50_1_1 = string(`p50_1_1', "%3.1f")
+
+
+qui centile _cv1 if hlaclass == 2
+local p50_1_2 = r(c_1)
+local sp50_1_2 = string(`p50_1_2', "%3.1f")
+
+qui centile _cv2 if hlaclass == 1
+local p50_2_1 = r(c_1)
+local sp50_2_1 = string(`p50_2_1', "%3.1f")
+
+qui centile _cv2 if hlaclass == 2
+local p50_2_2 = r(c_1)
+local sp50_2_2 = string(`p50_2_2', "%3.1f")
+
+table (hlaclass), stat(median _cv1 _cv2) nototal
+
+graph box _cv1 _cv2,  over(hlaclass)  nooutsides note("") ///
+ boxgap(45) /// 
+ title ("90% Trimmed Inter-Labs Coefficient of Variation (CV)") /// 
+ subtitle("Excluding MFI values that are beyond the 90% central range")  ///
+ ylabe(0(25)100, grid) ymtick(12.5(12.5)87.5, grid)  ytitle("(%)")  ///
+ text(`p50_1_1' 23 "`sp50_1_1'", size(*0.9) color(stc1)) ///
+ text(`p50_2_1' 46 "`sp50_2_1'", size(*0.9) color(stc2)) ///
+ text(`p50_1_2' 77.5 "`sp50_1_2'", size(*0.9) color(stc1)) ///
+ text(`p50_2_2' 101 "`sp50_2_2'", size(*0.9) color(stc2))
+graph export cv_trimmed_90.tif, replace
+graph export cv_trimmed_90.pdf, replace
+graph export cv_trimmed_90.png, replace
+restore
+
+*-------------------------------------------------------------------------------
+**# boxplot non trimmed CVs
+*-------------------------------------------------------------------------------
+preserve
+drop if serum == 9 & hlaclass == 2
+* immucor =  rowmedian(BO FI NA PD PR PG PI RC)
+* onelambda = rowmedian(AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N)
+egen _mean1= rowmean(BO FI NA PD PR PG PI RC)
+egen _sd1 = rowsd(BO FI NA PD PR PG PI RC)
+gen _cv1 =_sd1 / _mean1 * 100
+label var _cv1 "Vendor 1"
+
+egen _mean2= rowmean(AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N)
+egen _sd2 = rowsd(AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N)
+gen _cv2 =_sd2 / _mean2 * 100
+label var _cv2 "Vendor 2"
+
+qui centile _cv1 if hlaclass == 1
+local p50_1_1 = r(c_1)
+local sp50_1_1 = string(`p50_1_1', "%3.1f")
+
+
+qui centile _cv1 if hlaclass == 2
+local p50_1_2 = r(c_1)
+local sp50_1_2 = string(`p50_1_2', "%3.1f")
+
+qui centile _cv2 if hlaclass == 1
+local p50_2_1 = r(c_1)
+local sp50_2_1 = string(`p50_2_1', "%3.1f")
+
+qui centile _cv2 if hlaclass == 2
+local p50_2_2 = r(c_1)
+local sp50_2_2 = string(`p50_2_2', "%3.1f")
+
+table (hlaclass), stat(median _cv1 _cv2) nototal
+
+graph box _cv1 _cv2,  over(hlaclass)  nooutsides note("") ///
+ boxgap(45) /// 
+ title ("Inter-Labs Coefficient of Variation (CV)") /// 
+ subtitle("Including all MFI values")  ///
+ ylabe(0(25)100, grid) ymtick(12.5(12.5)87.5, grid)  ytitle("(%)")  ///
+ text(`p50_1_1' 23 "`sp50_1_1'", size(*0.9) color(stc1)) ///
+ text(`p50_2_1' 46 "`sp50_2_1'", size(*0.9) color(stc2)) ///
+ text(`p50_1_2' 77.5 "`sp50_1_2'", size(*0.9) color(stc1)) ///
+ text(`p50_2_2' 101 "`sp50_2_2'", size(*0.9) color(stc2))
+graph export cv_trimmed_0.tif, replace
+graph export cv_trimmed_0.pdf, replace
+graph export cv_trimmed_0.png, replace
+restore
+
+
+*-------------------------------------------------------------------------------
+**# box plot trimmed 1.5*IQR beyond quartiles HLA antigens CVs over HLA
+*-------------------------------------------------------------------------------
+preserve
+drop if serum == 9 & hlaclass == 2
+* immucor =  rowmedian(BO FI NA PD PR PG PI RC)
+* onelambda = rowmedian(AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N)
+
+
+egen _p75_1 = rowpctile(BO FI NA PD PR PG PI RC), p(75)
+egen _p25_1 = rowpctile(BO FI NA PD PR PG PI RC), p(25)
+egen _p50_1 = rowpctile(BO FI NA PD PR PG PI RC), p(50)
+gen _iqr_1 = _p75_1 - _p25_1
+gen _lb_1 = _p25_1 - 1.5 * _iqr_1
+gen _ub_1 = _p75_1 + 1.5 * _iqr_1
+foreach var of varlist BO FI NA PD PR PG PI RC  {
+	replace `var' = . if `var' < _lb_1
+	replace `var' = . if `var' > _ub_1
+	 }
+	 
+egen _p75_2 = rowpctile(AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N), p(75)
+egen _p25_2 = rowpctile(AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N), p(25)
+egen _p50_2 = rowpctile(AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N), p(50)
+gen _iqr_2 = _p75_2 - _p25_2
+gen _lb_2 = _p25_2 - 1.5 * _iqr_2
+gen _ub_2 = _p75_2 + 1.5 * _iqr_2
+foreach var of varlist AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N  {
+	replace `var' = . if `var' < _lb_2
+	replace `var' = . if `var' > _ub_2
+	 }
+
+egen _mean1= rowmean(BO FI NA PD PR PG PI RC)
+egen _sd1 = rowsd(BO FI NA PD PR PG PI RC)
+gen _cv1 =_sd1 / _mean1 * 100
+label var _cv1 "Vendor 1"
+
+egen _mean2= rowmean(AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N)
+egen _sd2 = rowsd(AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N)
+gen _cv2 =_sd2 / _mean2 * 100
+label var _cv2 "Vendor 2"
+
+
+foreach num of numlist 1/6  {
+
+qui centile _cv1 if hlaclass == 1 & HLA_Allele == `num'
+local p50_1_1_`num' = r(c_1)
+local sp50_1_1_`num'= string(`p50_1_1_`num'', "%3.1f")
+di "`sp50_1_1_`num''"
+
+qui centile _cv1 if hlaclass == 2 & HLA_Allele == `num'
+local p50_1_2_`num' = r(c_1)
+local sp50_1_2_`num' = string(`p50_1_2_`num'', "%3.1f")
+di "`sp50_1_2_`num'"
+
+qui centile _cv2 if hlaclass == 1 & HLA_Allele == `num'
+local p50_2_1_`num' = r(c_1)
+local sp50_2_1_`num' = string(`p50_2_1_`num'', "%3.1f")
+di "`sp50_2_1_`num''"
+
+qui centile _cv2 if hlaclass == 2 & HLA_Allele == `num'
+local p50_2_2_`num' = r(c_1)
+local sp50_2_2_`num' = string(`p50_2_2_`num'', "%3.1f")
+di "`sp50_2_2_`num''"
+
+ }
+
+label var HLA_Allele "HLA Antigen"
+table (HLA_Allele), stat(median _cv1 _cv2) nototal  ///
+ nformat(%3.1f median)
+collect title "CVs (%) for each HLA antigen"
+collect style title, font(Arial, bold size(12))
+collect layout
+collect export cv_hla_antigen.docx, replace
+
+
+*-------------------------------------------------------------------------------
+**# box plot non trimmed CVs over HLA
+*-------------------------------------------------------------------------------
+
+graph box _cv1 _cv2,  over(HLA_Allele)  nooutsides note("") ///
+ boxgap(25) /// 
+ title ("Trimmed Inter-Labs Coefficient of Variation (CV)") /// 
+ subtitle("Excluding MFI values that are more than 1.5 IQR beyond the quartiles")  ///
+ ylabe(0(25)100, grid) ymtick(12.5(12.5)87.5, grid)  ytitle("(%)") 
+ 
+graph export cv_trimmed_0_antigens.tif, replace
+graph export cv_trimmed_0_antigens.pdf, replace
+graph export cv_trimmed_0_antigens.png, replace
+
+restore
+
+********************************************************************************
+**# End CALCULATE INTER-LABS COEFFICIENT OF VARIATION
+********************************************************************************
+
+ 
+
+
+
+
+********************************************************************************
+**# Start PREPARE DATSETS FOR BIAS ANALYSES
+********************************************************************************
+
+
+cd "C:\Documenti\Rombola\GDL AIBT PR"
+
+use merged_immucor_onelambda_class_I_and_II_s_appended, clear
+
+
+// drop serum 9 class II (May 7, 2024)
+drop if serum == 9 & hlaclass == 2
+cap drop median_immucor
+egen median_immucor =  rowmedian(BO FI NA PD PR PG PI RC)
+cap drop median_onelambda
+egen median_onelambda = rowmedian(AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N)
+label var median_immucor "Vendor 1, median between centers"
+label var median_onelambda "Vendor 2, median between centers"
+
+
+
+// Only PR and BO, August 24, 2024
+drop if serum == 9 & hlaclass == 2
+cap drop median_immucor
+egen median_immucor =  rowmedian(BO PR)
+cap drop median_onelambda
+egen median_onelambda = rowmedian(BO_2 PR_2)
+label var median_immucor "Vendor 1, median between centers"
+label var median_onelambda "Vendor 2, median between centers"
+
+
+
+preserve
+keep if median_onelambda >1000 & median_onelambda < 10000 & ///
+	 hlaclass == 1
+keep median_immucor median_onelambda
+drop if missing(median_immucor) | missing(median_onelambda)
+export delimited _all using "C:\Documenti\Rombola\GDL AIBT PR\pbmedian_classI.csv", replace
+restore
+
+preserve
+keep if median_onelambda >1000 & median_onelambda < 10000 & ///
+	 hlaclass == 2
+keep median_immucor median_onelambda
+drop if missing(median_immucor) | missing(median_onelambda)
+export delimited _all using "C:\Documenti\Rombola\GDL AIBT PR\pbmedian_classII.csv", replace
+restore
+
+
+
+cap drop mean_immucor
+egen mean_immucor =  rowmean(BO FI NA PD PR PG PI RC)
+cap drop mean_onelambda
+egen mean_onelambda = rowmean(AQ CRT OPBG TO UD BS BA PV MI BO_2 PR_2 CA PA MI_N)
+label var mean_immucor "Vendor 1, mean between centers"
+label var mean_onelambda "Vendor 2, mean between centers"
+
+
+preserve
+keep Allele hlaclass median_immucor  median_onelambda mean_immucor mean_onelambda
+cap save pb_ba_median_mean, replace
+cap export excel _all using "pb_ba_median_mean", firstrow(variables) replace
+restore
+
+
+cd "C:\Documenti\Rombola\GDL AIBT PR"
+
+use merged_immucor_onelambda_class_I_and_II_s_appended, clear
+
+preserve
+// Only PR and BO, August 24, 2024
+drop if serum == 9 & hlaclass == 2
+cap drop median_immucor
+egen median_immucor =  rowmedian(BO PR)
+cap drop median_onelambda
+egen median_onelambda = rowmedian(BO_2 PR_2)
+label var median_immucor "Vendor 1, median between centers"
+label var median_onelambda "Vendor 2, median between centers"
+cap drop mean_immucor
+egen mean_immucor =  rowmean(BO PR)
+cap drop mean_onelambda
+egen mean_onelambda = rowmean(BO_2 PR_2)
+label var mean_immucor "Vendor 1, mean between centers"
+label var mean_onelambda "Vendor 2, mean between centers"
+keep Allele hlaclass median_immucor  median_onelambda mean_immucor mean_onelambda
+cap save pb_ba_PRBO_median_mean, replace
+cap export excel _all using "pb_ba_PROBO_median_mean", firstrow(variables) replace
+restore
+
+********************************************************************************
+**# END PREPARING DATASETS FOR BIAS ANALYSES
+********************************************************************************
+
+
+********************************************************************************
+**# START MEAN BIAS ANALYSIS
+********************************************************************************
+
+
+
+
+*-------------------------------------------------------------------------------
+**# Start Passsing-Bablok - Class I & II - Median  (Stata)
+*-------------------------------------------------------------------------------
+
+cd "C:\Documenti\Rombola\GDL AIBT PR"
+use pb_ba_median_mean, clear
+count if !missing( median_onelambda) & !missing( median_immucor)
+
+
+agree  median_immucor  median_onelambda if median_immucor >1000 & median_immucor < 10000 & median_onelambda >1000 & median_onelambda < 10000  & hlaclass == 1, pb
+agree  median_immucor  median_onelambda if median_onelambda >1000 & median_onelambda < 10000  & hlaclass == 1, pb
+
+agree  median_immucor  median_onelambda if median_immucor >1000 & median_immucor < 10000 & median_onelambda >1000 & median_onelambda < 10000  & hlaclass == 2, pb
+agree  median_immucor  median_onelambda if median_onelambda >1000 & median_onelambda < 10000  & hlaclass == 2, pb
+
+
+*-------------------------------------------------------------------------------
+**# End Passsing-Bablok - Class I & II - Median  (Stata)
+*-------------------------------------------------------------------------------
+
+
+*-------------------------------------------------------------------------------
+**# Start Passsing-Bablok - Class I & II - Median  (Python)
+*-------------------------------------------------------------------------------
+
+
+cd "C:\Documenti\Rombola\GDL AIBT PR"	
+python
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import math
+def passing_bablok(method1, method2):
+    """Perform Passing-Bablok analysis."""
+    #
+    # Calculate the gradients of the lines between each pair of points
+    #
+    n_points = len(method1)
+    # sv is a list of the gradients between of each pair of points
+    sv = []
+    # k is the number of gradients less than -1
+    k = 0
+    for i in range(n_points - 1):
+        for j in range(i + 1, n_points):
+            dy = method2[j] - method2[i]
+            dx = method1[j] - method1[i]
+            # Ignore gradients that are vertical (ie the x values of the points
+            # are the same)
+            if dx != 0:
+                gradient = dy / dx
+            elif dy < 0:
+                gradient = -1.e+23
+            elif dy > 0:
+                gradient = 1.e+23
+            else:
+                gradient = None
+            if gradient is not None:
+                sv.append(gradient)
+                k += (gradient < -1)
+    # Sort the gradients into ascending order
+    sv.sort()
+
+    #
+    # Find the estimated gradient and confidence limits
+    #
+    m0 = (len(sv) - 1) / 2
+    if m0 == int(m0):
+        # If odd
+        gradient_est = sv[k + int(m0)]
+    else:
+        # If even
+        gradient_est = 0.5 * (sv[k + int(m0 - 0.5)] + sv[k + int(m0 + 0.5)])
+    # Calculate the index of the upper and lower confidence bounds
+    w = 1.96
+    ci = w * math.sqrt((n_points * (n_points - 1) * (2 * n_points + 5)) / 18)
+    n_gradients = len(sv)
+    m1 = int(round((n_gradients - ci) / 2))
+    m2 = n_gradients - m1 - 1
+    # Calculate the lower and upper bounds of the gradient
+    (gradient_lb, gradient_ub) = (sv[k + m1], sv[k + m2])
+
+    def calc_intercept(method1, method2, gradient):
+        """Calculate intercept given points and a gradient."""
+        temp = []
+        for i in range(len(method1)):
+            temp.append(method2[i] - gradient * method1[i])
+        return np.median(temp)
+
+    # Calculate the intercept as the median of all the intercepts of all the
+    # lines connecting each pair of points
+    int_est = calc_intercept(method1, method2, gradient_est)
+    int_ub = calc_intercept(method1, method2, gradient_lb)
+    int_lb = calc_intercept(method1, method2, gradient_ub)
+
+    return (gradient_est, gradient_lb, gradient_ub), (int_est, int_lb, int_ub)
+# Here it is all put together:
+
+plt.rcParams['font.family'] = "Arial"
+df = pd.read_csv("pbmedian_classI.csv")
+df.dropna(inplace=True)
+df = df.rename(columns = {"median_immucor": "Vendor 1", "median_onelambda": "Vendor 2"}) 
+
+
+
+beta, alpha = passing_bablok(df['Vendor 2'], df['Vendor 1'])
+
+#
+# Plot
+#
+ax = plt.axes()
+ax.set_title('HLA Class I - Passing-Bablok Regression')
+ax.set_xlabel('Vendor 2')
+ax.set_ylabel('Vendor 1')
+# Scatter plot
+ax.scatter(df['Vendor 2'], df['Vendor 1'], c='#1A85FF', s=50, edgecolor = 'white', linewidth=1.1, alpha=0.85, marker='o')
+# Get axis limits
+left, right = plt.xlim()
+bottom, top = plt.ylim()
+# Change axis limits
+ax.set_xlim(0, 10000)
+ax.set_ylim(0, 10000)
+
+ax.grid(True, lw = 0.9, ls = '--', c = '.75', alpha = 0.5)
+#ax.xticks([1000,3000,5000,10000]) 
+#ax.yticks([1000,3000,5000,10000])
+from matplotlib import ticker
+ax.xaxis.set_major_locator(ticker.FixedLocator([0,1000,3000,5000,10000]))
+ax.yaxis.set_major_locator(ticker.FixedLocator([0,1000,3000,5000,10000]))
+
+# Reference line
+label = 'Reference line'
+ax.plot([left, right], [left, right], c='grey', ls='--', label=label)
+# Passing-Bablok regression line
+x = np.array([left, right])
+y = beta[0] * x + alpha[0]
+ax.plot(x, y, label=f'{beta[0]:4.2f}x + {alpha[0]:4.0f}')
+# Passing-Bablok regression line - confidence intervals
+x = np.array([left, right])
+y_lb = beta[1] * x + alpha[1]
+y_ub = beta[2] * x + alpha[2]
+label = f'Upper CI: {beta[2]:4.2f}x + {alpha[2]:4.0f}'
+ax.plot(x, y_ub, c='tab:blue', alpha=0.2, label=label)
+label = f'Lower CI: {beta[1]:4.2f}x + {alpha[1]:4.0f}'
+ax.plot(x, y_lb, c='tab:blue', alpha=0.2, label=label)
+ax.fill_between(x, y_ub, y_lb, alpha=0.2)
+# Set aspect ratio
+ax.set_aspect('equal')
+# Legend
+ax.legend(frameon=False)
+# Show
+plt.savefig('pbclassI_v2.tif', dpi=1200)
+plt.show()
+
+plt.rcParams['font.family'] = "Arial"
+df = pd.read_csv("pbmedian_classII.csv")
+df.dropna(inplace=True)
+df = df.rename(columns = {"median_immucor": "Vendor 1", "median_onelambda": "Vendor 2"}) 
+
+
+
+beta, alpha = passing_bablok(df['Vendor 2'], df['Vendor 1'])
+
+#
+# Plot
+#
+ax = plt.axes()
+ax.set_title('HLA Class II - Passing-Bablok Regression')
+ax.set_xlabel('Vendor 2')
+ax.set_ylabel('Vendor 1')
+# Scatter plot
+ax.scatter(df['Vendor 2'], df['Vendor 1'], c='#1A85FF', s=50, edgecolor = 'white', linewidth=1.1, alpha=0.85, marker='o')
+# Get axis limits
+left, right = plt.xlim()
+bottom, top = plt.ylim()
+# Change axis limits
+ax.set_xlim(0, 11000)
+ax.set_ylim(0, 11000)
+
+ax.grid(True, lw = 0.9, ls = '--', c = '.75', alpha = 0.5)
+#ax.xticks([1000,3000,5000,10000]) 
+#ax.yticks([1000,3000,5000,10000])
+from matplotlib import ticker
+ax.xaxis.set_major_locator(ticker.FixedLocator([0,1000,3000,5000,10000]))
+ax.yaxis.set_major_locator(ticker.FixedLocator([0,1000,3000,5000,10000]))
+
+# Reference line
+label = 'Reference line'
+ax.plot([left, right], [left, right], c='grey', ls='--', label=label)
+# Passing-Bablok regression line
+x = np.array([left, right])
+y = beta[0] * x + alpha[0]
+ax.plot(x, y, label=f'{beta[0]:4.2f}x + {alpha[0]:4.0f}')
+# Passing-Bablok regression line - confidence intervals
+x = np.array([left, right])
+y_lb = beta[1] * x + alpha[1]
+y_ub = beta[2] * x + alpha[2]
+label = f'Upper CI: {beta[2]:4.2f}x + {alpha[2]:4.0f}'
+ax.plot(x, y_ub, c='tab:blue', alpha=0.2, label=label)
+label = f'Lower CI: {beta[1]:4.2f}x + {alpha[1]:4.0f}'
+ax.plot(x, y_lb, c='tab:blue', alpha=0.2, label=label)
+ax.fill_between(x, y_ub, y_lb, alpha=0.2)
+# Set aspect ratio
+ax.set_aspect('equal')
+# Legend
+ax.legend(frameon=False)
+# Show
+plt.savefig('pbclassII_v2.tif', dpi=1200)
+plt.show()
+
+
+end
+
+
+*-------------------------------------------------------------------------------
+**# End Passsing-Bablok - Class I & II - Median  (Python)
+*-------------------------------------------------------------------------------
+
+*-------------------------------------------------------------------------------
+**# Start Fractional polynomials - Class I & II
+*-------------------------------------------------------------------------------
+
+// HLA class I
+cd "C:\Documenti\Rombola\GDL AIBT PR"
+use pb_ba_median_mean, clear
+count if !missing( median_onelambda) & !missing( median_immucor)
+// gen HLA antigen indicator
+gen A = regexm(Allele, "^A")
+gen B = regexm(Allele, "^B")
+gen C = regexm(Allele, "^C")
+gen DQ = regexm(Allele, "^DQ")
+gen DR = regexm(Allele, "^DR")
+gen DP = regexm(Allele, "^DP")
+
+fracpoly regress median_immucor  median_onelambda if hlaclass == 1
+
+// calculate 95% confidence intervals of the forecast
+scalar t = abs(invt(e(df_r), 0.025))
+fracpred stdp, stdp
+fracpred yhat
+gen sef =  sqrt(stdp ^ 2 +  e(rmse) ^ 2)
+gen lb = yhat - t * sef
+gen ub = yhat + t * sef 
+
+// diplay the formula
+local a  = string(_b[_cons], "%4.1f")
+local b1 = string(_b[Imedi__1], "%4.1f")
+local x1 = substr("`: var label Imedi__1 '",1, 8)
+local b2 = string(_b[Imedi__2], "%4.1f")
+local x2 = substr("`: var label Imedi__2 '",1, 8)
+
+// Immucor value when One Lambda = 3000
+di %4.0f 1462.1 + 1235.9 * ((3000/10000)^0.5 - 0.67) + 2593.4 * ((3000/10000)^2 - 0.207)
+// Immucor value when One Lambda = 1000
+di %4.0f 1462.1 + 1235.9 * ((1000/10000)^0.5 - 0.67) + 2593.4 * ((1000/10000)^2 - 0.207)
+
+
+
+fracplot if hlaclass == 1, aspectratio(1) ytitle("Vendor 1") ///
+	ylabel(0 1000 3000 5000 10000 15000 20000 30000, labsize(*0.8) angle(0)) ///
+	xtitle("Vendor 2") ///
+	xlabel(0 1000 3000 5000 10000 15000 20000 30000, labsize(*0.8) angle(90)) ///
+    ciopts(color(white)) msymbol(stc1%30) mlcolor(white) mlwidth(*0.5) msize(*1.5) ///
+	addplot(line median_onelambda median_onelambda if hlaclass == 1, lpattern(dash) lcolor(black)) ///
+	legend(off) title("HLA Class I") ///
+	graphregion(margin(0 0 10.0 0)) ///
+	text(-11000 15000 "Vendor 1= 1462.1 + 1235.9 * (X{sup:0.5} - 0.67) + 2593.4 * (X{sup:2} - 0.207)" "where X = Vendor 2 / 10000", size(*0.6) color(stc1)) //
+	//text(-11000 15000 "Formula:" "Vendor 1 = `a' + `b1'* (`x1') + `b2' * (`x2'), where X = Vendor 2 / 10000", size(*0.6) color(stc1))
+cap graph export fpclassI_v2.png, replace
+cap graph export fpclassI_v2.pdf, replace
+cap graph export fpclassI_v2.tif, replace
+
+
+fracplot if hlaclass == 1, aspectratio(1) ytitle("Vendor 1") ///
+	ylabel(0 1000 3000 5000 10000 15000 20000 30000, labsize(*0.8) angle(0)) ///
+	xtitle("Vendor 2") ///
+	xlabel(0 1000 3000 5000 10000 15000 20000 30000, labsize(*0.8) angle(90)) ///
+    ciopts(color(white)) msymbol(stc1%30) mlcolor(white) mlwidth(*0.5) msize(*1.5) ///
+	addplot(rarea ub lb median_onelambda, color(stc1%20)) ///
+	legend(off) title("HLA Class I") ///
+	graphregion(margin(0 0 10.0 0)) ///
+	text(-13000 15000 "Vendor 1= 1462.1 + 1235.9 * (X{sup:0.5} - 0.67) + 2593.4 * (X{sup:2} - 0.207)" "where X = Vendor 2 / 10000", size(*0.6) color(stc1))
+cap graph export fpclassI_v2_pred_int.png, replace
+cap graph export fpclassI_v2_pred_int.pdf, replace
+cap graph export fpclassI_v2_pred_int.tif, replace	
+
+
+// HLA class II
+cd "C:\Documenti\Rombola\GDL AIBT PR"
+use pb_ba_median_mean, clear
+count if !missing( median_onelambda) & !missing( median_immucor)
+// gen HLA antigen indicator
+gen A = regexm(Allele, "^A")
+gen B = regexm(Allele, "^B")
+gen C = regexm(Allele, "^C")
+gen DQ = regexm(Allele, "^DQ")
+gen DR = regexm(Allele, "^DR")
+gen DP = regexm(Allele, "^DP")
+
+
+fracpoly regress median_immucor  median_onelambda if hlaclass == 2
+
+// calculate 95% confidence intervals of the forecast
+scalar t = abs(invt(e(df_r), 0.025))
+fracpred stdp, stdp
+fracpred yhat
+gen sef =  sqrt(stdp ^ 2 +  e(rmse) ^ 2)
+gen lb = yhat - t * sef
+gen ub = yhat + t * sef 
+
+// diplay the formula
+local a  = string(_b[_cons], "%4.1f")
+local b1 = string(_b[Imedi__1], "%4.1f")
+local x1 = substr("`: var label Imedi__1 '",1, 6)
+local b2 = string(_b[Imedi__2], "%4.1f")
+local x2 = substr("`: var label Imedi__2 '",1, 11)
+
+// Immucor value when One Lambda = 3000
+di %4.0f 4017.0 + 6872.3 * ((3000/10000) - .584) + 1115.3 * ((3000/10000) * ln(3000/10000) + 0.31)
+// Immucor value when One Lambda = 1000
+di %4.0f 4017.0 + 6872.3 * ((1000/10000) - .584) + 1115.3 * ((1000/10000) * ln(1000/10000) + 0.31)
+
+fracplot if hlaclass == 2, aspectratio(1) ytitle("Vendor 1") ///
+	ylabel(0 1000 3000 5000 10000 15000 20000 30000, labsize(*0.8) angle(0)) ///
+	xtitle("Vendor 2") ///
+	xlabel(0 1000 3000 5000 10000 15000 20000 30000, labsize(*0.8) angle(90)) ///
+	 ciopts(color(white)) msymbol(stc1%30) mlcolor(white) mlwidth(*0.5)  msize(*1.5) /// ///
+	addplot(line median_onelambda median_onelambda if hlaclass == 2, lpattern(dash) lcolor(black)) ///
+	legend(off) title("HLA Class II") ///
+	graphregion(margin(0 0 10.0 0)) ///
+	text(-11000 15000 "Vendor 1= 4017.0 + 6872.3 * (X - 0.584) + 1115.3 * (X * log(X) + 0.31)" "where X = Vendor 2 / 10000", size(*0.6) color(stc1))
+	//text(-11000 15000 "Formula:" "Vendor 1 = `a' + `b1'* (`x1') + `b2' * (`x2'), where X = Vendor 2 / 10000", size(*0.6) color(stc1))
+cap graph export fpclassII_v2.png, replace
+cap graph export fpclassII_v2.pdf, replace
+cap graph export fpclassII_v2.tif, replace
+
+
+fracplot if hlaclass == 2, aspectratio(1) ytitle("Vendor 1") ///
+	ylabel(0 1000 3000 5000 10000 15000 20000 30000, labsize(*0.8) angle(0)) ///
+	xtitle("Vendor 2") ///
+	xlabel(0 1000 3000 5000 10000 15000 20000 30000, labsize(*0.8) angle(90)) ///
+    ciopts(color(white)) msymbol(stc1%30) mlcolor(white) mlwidth(*0.5) msize(*1.5) ///
+	addplot(rarea ub lb median_onelambda, color(stc1%20)) ///
+	legend(off) title("HLA Class II") ///
+	graphregion(margin(0 0 10.0 0)) ///
+	text(-15000 15000 "Vendor 1= 4017.0 + 6872.3 * (X - 0.584) + 1115.3 * (X * log(X) + 0.31)" "where X = Vendor 2 / 10000", size(*0.6) color(stc1))
+cap graph export fpclassII_v2_pred_int.png, replace
+cap graph export fpclassII_v2_pred_int.pdf, replace
+cap graph export fpclassII_v2_pred_int.tif, replace	
+
+
+fracplot if hlaclass == 2, aspectratio(1) ytitle("Vendor 1") ///
+	ylabel(0 1000 3000 5000 10000 15000 20000 30000, labsize(*0.8) angle(0)) ///
+	xtitle("Vendor 2") ///
+	xlabel(0 1000 3000 5000 10000 15000 20000 30000, labsize(*0.8) angle(90)) ///
+    ciopts(color(white)) msymbol(i)  ///
+	addplot(rarea ub lb median_onelambda, color(stc1%20) || ///
+	scatter median_immucor median_onelambda if DP == 1 , msymbol(stc2%30) mlcolor(white) mlwidth(*0.5) msize(*1.5) || ///
+	scatter median_immucor median_onelambda if DQ == 1 , msymbol(stc3%30) mlcolor(white) mlwidth(*0.5) msize(*1.5) || ///
+	scatter median_immucor median_onelambda if DR == 1 , msymbol(stc4%30) mlcolor(white) mlwidth(*0.5) msize(*1.5) ) ///
+	legend(order(5 "DP" 6 "DQ" 7 "DR") pos(12) rows(1)) title("HLA Class II") ///
+	graphregion(margin(0 0 10.0 0)) ///
+	text(-16000 15000 "Vendor 1= 4017.0 + 6872.3 * (X - 0.584) + 1115.3 * (X * log(X) + 0.31)" "where X = Vendor 2 / 10000", size(*0.6) color(stc1))  
+cap graph export fpclassII_v2_pred_int_DPDRDQ.png, replace
+cap graph export fpclassII_v2_pred_int_DPDRDQ.pdf, replace
+cap graph export fpclassII_v2_pred_int_DPDRDQ.tif, replace	
+
+
+
+
+cap drop pred_median_immucor
+gen pred_median_immucor = cond(hlaclass == 1 , ///
+	1462.1 + 1235.9 * ((median_onelambda/10000)^ 0.5 - 0.67) + 2593.4 * ((median_onelambda/10000)^ 2 - 0.207), ///
+	4017.0 + 6872.3 * ((median_onelambda/10000) - .584) + 1115.3 * ((median_onelambda/10000) * ln(median_onelambda/10000) + 0.31))
+	
+tw scatter median_immucor pred_median_immucor, ///
+	msymbol(stc1%30) mlcolor(white) mlwidth(*0.5)  msize(*1.5) || ///
+   line  pred_median_immucor  pred_median_immucor, ///
+   lpattern(dash) lcolor(black) aspectratio(1) || ///
+   , ///
+   legend(off) /// 
+   ylabel(0 1000 3000 5000 10000 15000 20000 25000, labsize(*0.8) angle(0)) ///
+   ytitle("Observed Vendor 1") ///
+   xlabel(0 1000 3000 5000 10000 15000 20000 25000, labsize(*0.8) angle(90)) ///
+   xtitle("Predicted Vendor 1")
+cap graph export fp_pred_obs_classI.png, replace
+cap graph export fp_pred_obs_classI.pdf, replace
+cap graph export fp_pred_obs_classI.tif, replace
+
+********************************************************************************
+**# Start BA FP comnined, same legend
+********************************************************************************
+
+// HLA class II
+cd "C:\Documenti\Rombola\GDL AIBT PR"
+use pb_ba_median_mean, clear
+count if !missing( median_onelambda) & !missing( median_immucor)
+// gen HLA antigen indicator
+gen A = regexm(Allele, "^A")
+gen B = regexm(Allele, "^B")
+gen C = regexm(Allele, "^C")
+gen DQ = regexm(Allele, "^DQ")
+gen DR = regexm(Allele, "^DR")
+gen DP = regexm(Allele, "^DP")
+
+
+fracpoly regress median_immucor  median_onelambda if hlaclass == 2
+
+// calculate 95% confidence intervals of the forecast
+scalar t = abs(invt(e(df_r), 0.025))
+fracpred stdp, stdp
+fracpred yhat
+gen sef =  sqrt(stdp ^ 2 +  e(rmse) ^ 2)
+gen lb = yhat - t * sef
+gen ub = yhat + t * sef 
+
+// diplay the formula
+local a  = string(_b[_cons], "%4.1f")
+local b1 = string(_b[Imedi__1], "%4.1f")
+local x1 = substr("`: var label Imedi__1 '",1, 6)
+local b2 = string(_b[Imedi__2], "%4.1f")
+local x2 = substr("`: var label Imedi__2 '",1, 11)
+
+// Immucor value when One Lambda = 3000
+di %4.0f 4017.0 + 6872.3 * ((3000/10000) - .584) + 1115.3 * ((3000/10000) * ln(3000/10000) + 0.31)
+// Immucor value when One Lambda = 1000
+di %4.0f 4017.0 + 6872.3 * ((1000/10000) - .584) + 1115.3 * ((1000/10000) * ln(1000/10000) + 0.31)
+
+
+fracplot if hlaclass == 2, aspectratio(1) ytitle("Vendor 1") ///
+	ylabel(0 1000 3000 5000 10000 15000 20000 30000, labsize(*0.8) angle(0)) ///
+	xtitle("Vendor 2") ///
+	xlabel(0 1000 3000 5000 10000 15000 20000 30000, labsize(*0.8) angle(90)) ///
+    ciopts(color(white)) msymbol(i)  ///
+	addplot(rarea ub lb median_onelambda, color(stc1%20) || ///
+	scatter median_immucor median_onelambda if DP == 1 , msymbol(stc2%30) mlcolor(white) mlwidth(*0.5) msize(*1.5) || ///
+	scatter median_immucor median_onelambda if DQ == 1 , msymbol(stc3%30) mlcolor(white) mlwidth(*0.5) msize(*1.5) || ///
+	scatter median_immucor median_onelambda if DR == 1 , msymbol(stc4%30) mlcolor(white) mlwidth(*0.5) msize(*1.5) ) ///
+	legend(order(5 "DP" 6 "DQ" 7 "DR") pos(12) rows(1)) title("HLA Class II") ///
+	graphregion(margin(0 0 10.0 0)) ///
+	text(-14000 15000 "Vendor 1= 4017.0 + 6872.3 * (X - 0.584) + 1115.3 * (X * log(X) + 0.31)" "where X = Vendor 2 / 10000", size(*0.6) color(stc1))  name(fp, replace)
+	
+	
+cd "C:\Documenti\Rombola\GDL AIBT PR"
+use pb_ba_median_mean, clear
+count if !missing( median_onelambda) & !missing( median_immucor)
+// gen HLA antigen indicator
+gen A = regexm(Allele, "^A")
+gen B = regexm(Allele, "^B")
+gen C = regexm(Allele, "^C")
+gen DQ = regexm(Allele, "^DQ")
+gen DR = regexm(Allele, "^DR")
+gen DP = regexm(Allele, "^DP")
+
+
+
+cap drop _r _ln_median_immucor _ln_median_onelambda _rm _gm
+gen _r = median_immucor/ median_onelambda
+gen _ln_median_immucor = log(median_immucor)
+gen _ln_median_onelambda = log(median_onelambda)
+egen _rm = rowmean(_ln_median_immucor _ln_median_onelambda)
+gen _gm = exp(_rm)
+
+// HLA class II
+blandaltman  median_immucor  median_onelambda ///
+	if median_onelambda >1000 & median_onelambda < 10000 & hlaclass == 2 ///
+	, plot(ratio) hloa hbias noregloa noregbias
+local gmean_r = string(`r(gmean_r)', "%3.2f")
+local lloa_r =  string(`r(lloa_r)', "%3.2f")
+local uloa_r =  string(`r(uloa_r)', "%3.2f")
+blandaltman  median_immucor  median_onelambda ///
+	if  median_onelambda >1000 & median_onelambda < 10000 & hlaclass == 2 ///
+	, ///
+	plot(ratio) ///
+	addplot(   ///
+	scatter _r _gm if DP == 1 , msymbol(stc2%30) mlcolor(white) mlwidth(*0.5) msize(*2.5) || ///
+	scatter _r _gm if DQ == 1 , msymbol(stc3%30) mlcolor(white) mlwidth(*0.5) msize(*2.5) || ///
+	scatter _r _gm if DR == 1 , msymbol(stc4%30) mlcolor(white) mlwidth(*0.5) msize(*2.5) ||  ) ///
+	ytitle("Ratio Vendor 2 to Vendor 1", size(*1.1)) ysc(titlegap(3)) ///
+	ymtick(, grid) ///
+	xtitle("Geometric Mean (Vendor 1,Vendor 2)", size(*1.1))  xsc(titlegap(3)) ///
+	xlab(1000 3000 5000 10000) ///
+	scopts(msymbol(i)) ///
+	hloa hbias noregloa noregbias  ///
+	text(`r(gmean_r)' 500 "`gmean_r'", color(stc1)) ///
+	text(`r(lloa_r)' 500 "`lloa_r'",  color(stc1)) ///
+	text(`r(uloa_r)' 500 "`uloa_r'", color(stc1)) ///
+	biasopts(lcolor(stc1%50)) loaopts(lcolor(stc1%50)) ///
+	title("HLA Class II")  legend(order(1 "DP" 2 "DQ" 3 "DR") ring(0)) name(ba, replace)
+
+grc1leg2 fp ba, legendfrom(fp)
+graph export fp_ba_DPDQDR.png, replace
+graph export fp_ba_DPDQDR.pdf, replace
+graph export fp_ba_DPDQDR.tif, replace
+
+********************************************************************************
+**# End BA FP comnined, same legend
+********************************************************************************
+
+
+*-------------------------------------------------------------------------------
+**# End Fractional polynomials - Class I & II
+*-------------------------------------------------------------------------------
+
+
+*-------------------------------------------------------------------------------
+**# Bland-Altman Ratio Class I & II - Median
+*-------------------------------------------------------------------------------
+
+cd "C:\Documenti\Rombola\GDL AIBT PR"
+use pb_ba_median_mean, clear
+count if !missing( median_onelambda) & !missing( median_immucor)
+// gen HLA antigen indicator
+gen A = regexm(Allele, "^A")
+gen B = regexm(Allele, "^B")
+gen C = regexm(Allele, "^C")
+gen DQ = regexm(Allele, "^DQ")
+gen DR = regexm(Allele, "^DR")
+gen DP = regexm(Allele, "^DP")
+
+
+// check numbers used for analyses
+preserve
+keep if !missing( median_onelambda) & !missing( median_immucor)
+count
+count if hlaclass == 1
+count if median_onelambda >1000 & median_onelambda < 10000  & hlaclass == 1
+count if hlaclass == 2
+count if median_onelambda >1000 & median_onelambda < 10000  & hlaclass == 2
+
+count if median_immucor >1000 & median_immucor < 10000 & median_onelambda >1000 & median_onelambda < 10000  & hlaclass == 1
+count if median_immucor >1000 & median_immucor < 10000 & median_onelambda >1000 & median_onelambda < 10000  & hlaclass == 2
+
+restore
+
+
+// HLA class I
+blandaltman  median_immucor  median_onelambda ///
+	if median_onelambda >1000 & median_onelambda < 10000  & hlaclass == 1 ///
+	, plot(ratio) hloa hbias noregloa noregbias
+local gmean_r = string(`r(gmean_r)', "%3.2f")
+local lloa_r =  string(`r(lloa_r)', "%3.2f")
+local uloa_r =  string(`r(uloa_r)', "%3.2f")
+blandaltman  median_immucor  median_onelambda ///
+	if median_onelambda >1000 & median_onelambda < 10000 & hlaclass == 1 ///
+	, ///
+	plot(ratio) ///
+	ytitle("Ratio Vendor 2 to Vendor 1", size(*1.1)) ysc(titlegap(3)) ///
+	ymtick(, grid) ///
+	xtitle("Geometric Mean (Vendor 1,Vendor 2)", size(*1.1))  xsc(titlegap(3)) ///
+	xlab(1000 3000 5000 10000) ///
+	scopts(msymbol(O) mcolor(stc1%85) mlcolor(white) mlwidth(*0.9) msize(*2.5)) ///
+	hloa hbias noregloa noregbias  ///
+	text(`r(gmean_r)' 500 "`gmean_r'", color(stc1)) ///
+	text(`r(lloa_r)' 500 "`lloa_r'",  color(stc1)) ///
+	text(`r(uloa_r)' 500 "`uloa_r'", color(stc1)) ///
+	biasopts(lcolor(stc1%50)) loaopts(lcolor(stc1%50)) ///
+	title("HLA Class I") 
+cap graph export baclassI.png, replace
+cap graph export baclassI.pdf, replace
+cap graph export baclassI.tif, replace
+
+	
+// HLA class II
+blandaltman  median_immucor  median_onelambda ///
+	if median_onelambda >1000 & median_onelambda < 10000 & hlaclass == 2 ///
+	, plot(ratio) hloa hbias noregloa noregbias
+local gmean_r = string(`r(gmean_r)', "%3.2f")
+local lloa_r =  string(`r(lloa_r)', "%3.2f")
+local uloa_r =  string(`r(uloa_r)', "%3.2f")
+blandaltman  median_immucor  median_onelambda ///
+	if  median_onelambda >1000 & median_onelambda < 10000 & hlaclass == 2 ///
+	, ///
+	plot(ratio) ///
+	ytitle("Ratio Vendor 2 to Vendor 1", size(*1.1)) ysc(titlegap(3)) ///
+	ymtick(, grid) ///
+	xtitle("Geometric Mean (Vendor 1,Vendor 2)", size(*1.1))  xsc(titlegap(3)) ///
+	xlab(1000 3000 5000 10000) ///
+	scopts(msymbol(O) mcolor(stc1%85) mlcolor(white) mlwidth(*0.9) msize(*2.5)) ///
+	hloa hbias noregloa noregbias  ///
+	text(`r(gmean_r)' 500 "`gmean_r'", color(stc1)) ///
+	text(`r(lloa_r)' 500 "`lloa_r'",  color(stc1)) ///
+	text(`r(uloa_r)' 500 "`uloa_r'", color(stc1)) ///
+	biasopts(lcolor(stc1%50)) loaopts(lcolor(stc1%50)) ///
+	title("HLA Class II")
+cap graph export baclassII.png, replace
+cap graph export baclassII.pdf, replace
+cap graph export baclassII.tif, replace
+
+
+
+cap drop _r _ln_median_immucor _ln_median_onelambda _rm _gm
+gen _r = median_immucor/ median_onelambda
+gen _ln_median_immucor = log(median_immucor)
+gen _ln_median_onelambda = log(median_onelambda)
+egen _rm = rowmean(_ln_median_immucor _ln_median_onelambda)
+gen _gm = exp(_rm)
+
+// HLA class II
+blandaltman  median_immucor  median_onelambda ///
+	if median_onelambda >1000 & median_onelambda < 10000 & hlaclass == 2 ///
+	, plot(ratio) hloa hbias noregloa noregbias
+local gmean_r = string(`r(gmean_r)', "%3.2f")
+local lloa_r =  string(`r(lloa_r)', "%3.2f")
+local uloa_r =  string(`r(uloa_r)', "%3.2f")
+blandaltman  median_immucor  median_onelambda ///
+	if  median_onelambda >1000 & median_onelambda < 10000 & hlaclass == 2 ///
+	, ///
+	plot(ratio) ///
+	addplot(   ///
+	scatter _r _gm if DP == 1 , msymbol(stc2%30) mlcolor(white) mlwidth(*0.5) msize(*2.5) || ///
+	scatter _r _gm if DQ == 1 , msymbol(stc3%30) mlcolor(white) mlwidth(*0.5) msize(*2.5) || ///
+	scatter _r _gm if DR == 1 , msymbol(stc4%30) mlcolor(white) mlwidth(*0.5) msize(*2.5) ||  ) ///
+	ytitle("Ratio Vendor 2 to Vendor 1", size(*1.1)) ysc(titlegap(3)) ///
+	ymtick(, grid) ///
+	xtitle("Geometric Mean (Vendor 1,Vendor 2)", size(*1.1))  xsc(titlegap(3)) ///
+	xlab(1000 3000 5000 10000) ///
+	scopts(msymbol(i)) ///
+	hloa hbias noregloa noregbias  ///
+	text(`r(gmean_r)' 500 "`gmean_r'", color(stc1)) ///
+	text(`r(lloa_r)' 500 "`lloa_r'",  color(stc1)) ///
+	text(`r(uloa_r)' 500 "`uloa_r'", color(stc1)) ///
+	biasopts(lcolor(stc1%50)) loaopts(lcolor(stc1%50)) ///
+	title("HLA Class II")  legend(order(1 "DP" 2 "DQ" 3 "DR") ring(0)) 
+cap graph export baclassII_DPDRDQ.png, replace
+cap graph export baclassII_DPDRDQ.pdf, replace
+cap graph export baclassII_DPDRDQ.tif, replace	
+    
+        tw ///
+	scatter _r _gm if median_onelambda >1000 & median_onelambda < 10000 & hlaclass == 2 & DP == 1 , msymbol(stc2%30) mlcolor(white) mlwidth(*0.5) msize(*2.5) || ///
+	scatter _r _gm if median_onelambda >1000 & median_onelambda < 10000 & hlaclass == 2 & DQ == 1 , msymbol(stc3%30) mlcolor(white) mlwidth(*0.5) msize(*2.5) || ///
+	scatter _r _gm if median_onelambda >1000 & median_onelambda < 10000 & hlaclass == 2 & DR == 1 , msymbol(stc4%30) mlcolor(white) mlwidth(*0.5) msize(*2.5) ||  ///
+	, ///
+	ytitle("Ratio Vendor 2 to Vendor 1", size(*1.1)) ysc(titlegap(3)) ///
+	ylab(0.05 0.1 0.2 0.5 1 2) yscale(range(0.5 2.5)) ///
+	ymtick(, grid) ///
+	xtitle("Geometric Mean (Vendor 1,Vendor 2)", size(*1.1))  xsc(titlegap(3)) ///
+	xlab(1000 3000 5000 10000) xsc(range(500 12000)) ///
+	yline(`lloa_r' `uloa_r', lcolor(stc1) lpattern(solid) )  ///
+	yline(`gmean_r', lcolor(stc1) lpattern(dash))  ///
+	text(`r(gmean_r)' 500 "`gmean_r'", color(stc1)) ///
+	text(`r(lloa_r)' 500 "`lloa_r'",  color(stc1)) ///
+	text(`r(uloa_r)' 500 "`uloa_r'", color(stc1)) ///
+	title("HLA Class II")  legend(order(1 "DP" 2 "DQ" 3 "DR") pos(12) rows(1)) 
+
+ 
+********************************************************************************
+**# START PR & BO Only
+********************************************************************************
+
+
+*-------------------------------------------------------------------------------
+**# Bland-Altman Ratio Class I & II - Median
+*-------------------------------------------------------------------------------
+
+cd "C:\Documenti\Rombola\GDL AIBT PR"
+use pb_ba_PRBO_median_mean, clear
+count if !missing( median_onelambda) & !missing( median_immucor)
+
+
+// check numbers used for analyses
+preserve
+keep if !missing( median_onelambda) & !missing( median_immucor)
+count
+count if hlaclass == 1
+count if median_onelambda >1000 & median_onelambda < 10000  & hlaclass == 1
+count if hlaclass == 2
+count if median_onelambda >1000 & median_onelambda < 10000  & hlaclass == 2
+
+count if median_immucor >1000 & median_immucor < 10000 & median_onelambda >1000 & median_onelambda < 10000  & hlaclass == 1
+count if median_immucor >1000 & median_immucor < 10000 & median_onelambda >1000 & median_onelambda < 10000  & hlaclass == 2
+
+restore
+
+
+// HLA class I
+blandaltman  median_immucor  median_onelambda ///
+	if median_onelambda >1000 & median_onelambda < 10000  & hlaclass == 1 ///
+	, plot(ratio) hloa hbias noregloa noregbias
+local gmean_r = string(`r(gmean_r)', "%3.2f")
+local lloa_r =  string(`r(lloa_r)', "%3.2f")
+local uloa_r =  string(`r(uloa_r)', "%3.2f")
+blandaltman  median_immucor  median_onelambda ///
+	if median_onelambda >1000 & median_onelambda < 10000 & hlaclass == 1 ///
+	, ///
+	plot(ratio) ///
+	ytitle("Ratio Vendor 2 to Vendor 1", size(*1.1)) ysc(titlegap(3)) ///
+	ymtick(, grid) ///
+	xtitle("Geometric Mean (Vendor 1,Vendor 2)", size(*1.1))  xsc(titlegap(3)) ///
+	xlab(1000 3000 5000 10000) ///
+	scopts(msymbol(O) mcolor(stc1%85) mlcolor(white) mlwidth(*0.9) msize(*2.5)) ///
+	hloa hbias noregloa noregbias  ///
+	text(`r(gmean_r)' 500 "`gmean_r'", color(stc1)) ///
+	text(`r(lloa_r)' 500 "`lloa_r'",  color(stc1)) ///
+	text(`r(uloa_r)' 500 "`uloa_r'", color(stc1)) ///
+	biasopts(lcolor(stc1%50)) loaopts(lcolor(stc1%50)) ///
+	title("HLA Class I") 
+cap graph export baclassI_PRBO.png, replace
+cap graph export baclassI_PRBO.pdf, replace
+cap graph export baclassI_PRBO.tif, replace
+
+	
+// HLA class II
+blandaltman  median_immucor  median_onelambda ///
+	if median_onelambda >1000 & median_onelambda < 10000 & hlaclass == 2 ///
+	, plot(ratio) hloa hbias noregloa noregbias
+local gmean_r = string(`r(gmean_r)', "%3.2f")
+local lloa_r =  string(`r(lloa_r)', "%3.2f")
+local uloa_r =  string(`r(uloa_r)', "%3.2f")
+blandaltman  median_immucor  median_onelambda ///
+	if  median_onelambda >1000 & median_onelambda < 10000 & hlaclass == 2 ///
+	, ///
+	plot(ratio) ///
+	ytitle("Ratio Vendor 2 to Vendor 1", size(*1.1)) ysc(titlegap(3)) ///
+	ymtick(, grid) ///
+	xtitle("Geometric Mean (Vendor 1,Vendor 2)", size(*1.1))  xsc(titlegap(3)) ///
+	xlab(1000 3000 5000 10000) ///
+	scopts(msymbol(O) mcolor(stc1%85) mlcolor(white) mlwidth(*0.9) msize(*2.5)) ///
+	hloa hbias noregloa noregbias  ///
+	text(`r(gmean_r)' 500 "`gmean_r'", color(stc1)) ///
+	text(`r(lloa_r)' 500 "`lloa_r'",  color(stc1)) ///
+	text(`r(uloa_r)' 500 "`uloa_r'", color(stc1)) ///
+	biasopts(lcolor(stc1%50)) loaopts(lcolor(stc1%50)) ///
+	title("HLA Class II")
+cap graph export baclassII_PRBO.png, replace
+cap graph export baclassII_PRBO.pdf, replace
+cap graph export baclassII_PRBO.tif, replace
+
+
+	
+********************************************************************************
+**# END PR & BO ONLY
+********************************************************************************
+
+
+
+
+********************************************************************************
+**# END MEAN BIAS ANALYSIS
+********************************************************************************
+
+
+********************************************************************************
+**# Start CUTPOINT ANALYSES
+********************************************************************************
+
+// HLA class I
+
+cd "C:\Documenti\Rombola\GDL AIBT PR"
+use pb_ba_median_mean, clear
+* drop if !missing( median_onelambda) | !missing( median_immucor)
+gen above_1000 = median_onelambda > 1000
+replace above_1000 = . if missing(median_onelambda)
+gen above_3000 = median_onelambda > 3000
+replace above_3000 = . if missing(median_onelambda)
+keep if hlaclass == 1
+
+*OPEN DATA SET AND RUN LOGIT REGRESSION
+logit above_3000 median_immucor
+
+*GENERATE CUTOFF, SENITIVITY AND SPECIFICITY USING -LSENS- COMMAND  
+qui lsens, genprob(cutoff) gensens(sens) genspec(spec) nograph
+format cutoff sens spec %9.2f
+*CALCULATE YOUDEN INDEX
+gen youden= sens-(1-spec)
+label var youden "Youden Index"
+
+*OBTAIN CUTOFF CORRESPONDING TO MAXIMUM OF YOUDEN INDEX
+sum youden
+sum median_immucor if youden==r(max)
+local max= r(mean)
+local smax = string(`max', "%5.0f")
+local pos_smax = `max' * 1.27
+
+drop if median_immucor > 5000
+drop if missing(median_immucor)
+drop if missing(median_onelambda)
+drop if missing(youden)
+*GRAPH (Constraining both y-axes to be equal)
+* set scheme s1color
+twoway ///
+	line sens median_immucor,  sort lcolor(stc1) connect(ascending) msymbol(i) || ///
+	line spec median_immucor,  sort lcolor(stc2) connect(ascending) msymbol(i) || ///
+	line youden median_immucor, sort lcolor(stc3) connect(ascending) msymbol(i) yaxis(2)  || ///
+	, ///
+	xline(`max', lcolor(black)) ///
+	text(.2 `pos_smax' "`smax'") ///
+	ylabel(0(.25)1, grid format(%3.2f))  ylabel(0(.25)1,  format(%3.2f) axis(2))  ///
+	title("Best Vendor 1 cut point for Vendor 2 > 3000") subtitle("HLA class I") xtitle("Vendor 1", size(*1.2)) xsc(titlegap(3)) ///
+	ytitle("Sensitivity/Specificity") ytitle("Youden Index", axis(2))	
+cap graph export cutpoint3000_I.png, replace
+cap graph export cutpoint3000_I.pdf, replace
+cap graph export cutpoint3000_I.tif, replace
+
+
+
+cd "C:\Documenti\Rombola\GDL AIBT PR"
+use pb_ba_median_mean, clear
+* drop if !missing( median_onelambda) | !missing( median_immucor)
+gen above_1000 = median_onelambda > 1000
+replace above_1000 = . if missing(median_onelambda)
+gen above_3000 = median_onelambda > 3000
+replace above_3000 = . if missing(above_3000)
+keep if hlaclass == 1
+
+*OPEN DATA SET AND RUN LOGIT REGRESSION
+logit above_1000 median_immucor
+
+*GENERATE CUTOFF, SENSITIVITY AND SPECIFICITY USING -LSENS- COMMAND  
+qui lsens, genprob(cutoff) gensens(sens) genspec(spec) nograph
+format cutoff sens spec %9.2f
+*CALCULATE YOUDEN INDEX
+gen youden= sens-(1-spec)
+label var youden "Youden Index"
+
+*OBTAIN CUTOFF CORRESPONDING TO MAXIMUM OF YOUDEN INDEX
+sum youden
+sum median_immucor if youden==r(max)
+local max= r(mean)
+local smax = string(`max', "%5.0f")
+local pos_smax = `max' * 1.37
+
+drop if median_immucor > 5000
+drop if missing(median_immucor)
+drop if missing(median_onelambda)
+drop if missing(youden)
+*GRAPH (Constraining both y-axes to be equal)
+* set scheme s1color
+twoway ///
+	line sens median_immucor,  sort lcolor(stc1) connect(ascending) msymbol(i) || ///
+	line spec median_immucor,  sort lcolor(stc2) connect(ascending) msymbol(i) || ///
+	line youden median_immucor, sort lcolor(stc3) connect(ascending) msymbol(i) yaxis(2)  || ///
+	, ///
+	xline(`max', lcolor(black)) ///
+	text(.2 `pos_smax' "`smax'") ///
+	ylabel(0(.25)1, grid format(%3.2f))  ylabel(0(.25)1,  format(%3.2f) axis(2))  ///
+	title("Best Vendor 1 cut point for Vendor 2 > 1000") subtitle("HLA class I") xtitle("Vendor 1", size(*1.2)) xsc(titlegap(3)) ///
+	ytitle("Sensitivity/Specificity") ytitle("Youden Index", axis(2))	
+cap graph export cutpoint1000_I.png, replace
+cap graph export cutpoint1000_I.pdf, replace
+cap graph export cutpoint1000_I.tif, replace
+
+
+
+// HLA class II
+
+cd "C:\Documenti\Rombola\GDL AIBT PR"
+use pb_ba_median_mean, clear
+* drop if !missing( median_onelambda) | !missing( median_immucor)
+gen above_1000 = median_onelambda > 1000
+replace above_1000 = . if missing(median_onelambda)
+gen above_3000 = median_onelambda > 3000
+replace above_3000 = . if missing(median_onelambda)
+keep if hlaclass == 2
+
+*OPEN DATA SET AND RUN LOGIT REGRESSION
+logit above_3000 median_immucor
+
+*GENERATE CUTOFF, SENSITIVITY AND SPECIFICITY USING -LSENS- COMMAND  
+qui lsens, genprob(cutoff) gensens(sens) genspec(spec) nograph
+format cutoff sens spec %9.2f
+*CALCULATE YOUDEN INDEX
+gen youden= sens-(1-spec)
+label var youden "Youden Index"
+
+*OBTAIN CUTOFF CORRESPONDING TO MAXIMUM OF YOUDEN INDEX
+sum youden
+sum median_immucor if youden==r(max)
+local max= r(mean)
+local smax = string(`max', "%5.0f")
+local pos_smax = `max' * 1.27
+
+drop if median_immucor > 5000
+drop if missing(median_immucor)
+drop if missing(median_onelambda)
+drop if missing(youden)
+*GRAPH (Constraining both y-axes to be equal)
+* set scheme s1color
+twoway ///
+	line sens median_immucor,  sort lcolor(stc1) connect(ascending) msymbol(i) || ///
+	line spec median_immucor,  sort lcolor(stc2) connect(ascending) msymbol(i) || ///
+	line youden median_immucor, sort lcolor(stc3) connect(ascending) msymbol(i) yaxis(2)  || ///
+	, ///
+	xline(`max', lcolor(black)) ///
+	text(.2 `pos_smax' "`smax'") ///
+	ylabel(0(.25)1, grid format(%3.2f))  ylabel(0(.25)1,  format(%3.2f) axis(2))  ///
+	title("Best Vendor 1 cut point for Vendor 2 > 3000") subtitle("HLA class II") xtitle("Vendor 1", size(*1.2)) xsc(titlegap(3)) ///
+	ytitle("Sensitivity/Specificity") ytitle("Youden Index", axis(2))	
+cap graph export cutpoint3000_II.png, replace
+cap graph export cutpoint3000_II.pdf, replace
+cap graph export cutpoint3000_II.tif, replace
+
+
+
+cd "C:\Documenti\Rombola\GDL AIBT PR"
+use pb_ba_median_mean, clear
+* drop if !missing( median_onelambda) | !missing( median_immucor)
+gen above_1000 = median_onelambda > 1000
+replace above_1000 = . if missing(median_onelambda)
+gen above_3000 = median_onelambda > 3000
+replace above_3000 = . if missing(median_onelambda)
+keep if hlaclass == 2
+
+*OPEN DATA SET AND RUN LOGIT REGRESSION
+logit above_1000 median_immucor
+
+*GENERATE CUTOFF, SENSITIVITY AND SPECIFICITY USING -LSENS- COMMAND  
+qui lsens, genprob(cutoff) gensens(sens) genspec(spec) nograph
+format cutoff sens spec %9.2f
+*CALCULATE YOUDEN INDEX
+gen youden= sens-(1-spec)
+label var youden "Youden Index"
+
+*OBTAIN CUTOFF CORRESPONDING TO MAXIMUM OF YOUDEN INDEX
+sum youden
+sum median_immucor if youden==r(max)
+local max= r(mean)
+local smax = string(`max', "%5.0f")
+local pos_smax = `max' * 1.37
+
+drop if median_immucor > 5000
+drop if missing(median_immucor)
+drop if missing(median_onelambda)
+drop if missing(youden)
+*GRAPH (Constraining both y-axes to be equal)
+* set scheme s1color
+twoway ///
+	line sens median_immucor,  sort lcolor(stc1) connect(ascending) msymbol(i) || ///
+	line spec median_immucor,  sort lcolor(stc2) connect(ascending) msymbol(i) || ///
+	line youden median_immucor, sort lcolor(stc3) connect(ascending) msymbol(i) yaxis(2)  || ///
+	, ///
+	xline(`max', lcolor(black)) ///
+	text(.2 `pos_smax' "`smax'") ///
+	ylabel(0(.25)1, grid format(%3.2f))  ylabel(0(.25)1,  format(%3.2f) axis(2))  ///
+	title("Best Vendor 1 cut point for Vendor 2 > 1000") subtitle("HLA class II") xtitle("Vendor 1", size(*1.2)) xsc(titlegap(3)) ///
+	ytitle("Sensitivity/Specificity") ytitle("Youden Index", axis(2))	
+cap graph export cutpoint1000_II.png, replace
+cap graph export cutpoint1000_II.pdf, replace
+cap graph export cutpoint1000_II.tif, replace
+
+********************************************************************************
+**# End CUTPOINT ANALYSES
+********************************************************************************
+
+
+exit
