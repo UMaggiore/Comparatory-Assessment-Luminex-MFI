@@ -1439,7 +1439,7 @@ keep if hlaclass == 2
 count
 local N = r(N)
 range y_identity 0 15000  `N'
-// gen fitted line (Passing-Bablok)
+// gen fitted line ()
 qui agree immucor predicted, pb
 gen yhat = r(a) + r(b) * predicted
 qui agree immucor onelambda, pb
